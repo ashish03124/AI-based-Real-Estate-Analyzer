@@ -5,42 +5,65 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 
 # ======================
-# CONFIGURATION SETUP
+# ENVIRONMENT SETUP
 # ======================
-def configure_gemini():
-    """Handles API key configuration for both local and production"""
-    # Try Streamlit secrets first (for production), fallback to .env (for local)
+def setup_environment():
+    """Configure environment with fail-safe key loading"""
+    # Load .env file only in local development
+    if not st.secrets:  # Only runs locally
+        load_dotenv()
+    
+    # Check both possible key sources
     api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
     
     if not api_key:
         st.error("""
-        🔑 API Key Missing!
-        For local use: Create `.env` with GEMINI_API_KEY=your_key
-        For deployment: Set in Streamlit Secrets
+        🔐 Authentication Required
+        
+        Please provide your Gemini API key:
+        
+        **For Local Development**:
+        1. Create a `.env` file in your project root
+        2. Add: `GEMINI_API_KEY=your_key_here`
+        
+        **For Production Deployment**:
+        1. Go to Streamlit app settings
+        2. Add to Secrets:
+        ```toml
+        [secrets]
+        GEMINI_API_KEY = "your_key_here"
+        ```
         """)
-        st.stop()  # Prevent app from running without key
+        st.stop()  # Halt execution if no key found
     
+    return api_key
+
+# ======================
+# APP INITIALIZATION
+# ======================
+def initialize_app():
+    """Configure app-wide settings"""
+    st.set_page_config(
+        page_title="🏠 AI Real Estate Analyst",
+        layout="centered",
+        page_icon="🏡"
+    )
+    
+    # Initialize Gemini
+    api_key = setup_environment()
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("models/gemini-1.5-pro-latest")
-
-# ======================
-# SESSION MANAGEMENT
-# ======================
-def init_session():
-    """Initialize session state variables"""
-    defaults = {
-        "chat_history": [],
-        "property_details": {},
-        "first_interaction": True,
-        "model": configure_gemini()  # Initialize model once
-    }
     
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    # Initialize session state
+    if "chat_history" not in st.session_state:
+        st.session_state.update({
+            "model": genai.GenerativeModel("models/gemini-1.5-pro-latest"),
+            "chat_history": [],
+            "property_details": {},
+            "first_interaction": True
+        })
 
 # ======================
-# CORE FUNCTIONALITY
+# CORE FUNCTIONS
 # ======================
 def generate_response(prompt: str) -> str:
     """Generate AI response with error handling"""
@@ -48,81 +71,54 @@ def generate_response(prompt: str) -> str:
         response = st.session_state.model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ Error: {str(e)}"
+        return f"⚠️ API Error: {str(e)}"
 
 def extract_property_details(text: str) -> dict:
-    """Extract property features from user input"""
-    patterns = {
-        "location": r'in\s(.+?)(?:\s|$)',
-        "size": r'(\d+)\s*(sqft|square\s*feet)',
-        "beds": r'(\d+)\s*bed',
-        "price": r'\$?(\d{1,3}(?:,\d{3})*)'
+    """Parse property details from user input"""
+    return {
+        "location": re.search(r'in\s(.+?)(?:\s|$)', text, re.I),
+        "size": re.search(r'(\d+)\s*(sqft|square\s*feet)', text, re.I),
+        "beds": re.search(r'(\d+)\s*bed', text, re.I),
+        "price": re.search(r'\$?(\d{1,3}(?:,\d{3})*)', text)
     }
-    return {k: re.search(v, text, re.I) for k, v in patterns.items()}
 
 # ======================
 # UI COMPONENTS
 # ======================
 def display_chat():
-    """Render chat history"""
+    """Render conversation history"""
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
 def show_welcome():
     """Initial assistant message"""
-    welcome = """
+    welcome_msg = """
     🏡 **AI Real Estate Analyst**  
     I can help with:
     - 📈 Property valuations
     - 🌆 Market trends
-    - 💰 Investment analysis  
-    Try: *"What's my 3-bedroom in Austin worth?"*
+    - 💰 Investment analysis
+    
+    Try asking:  
+    *"What's my 3-bedroom in Austin worth?"*  
+    *"Show market trends for Miami condos"*
     """
-    st.session_state.chat_history.append({"role": "assistant", "content": welcome})
+    st.session_state.chat_history.append({"role": "assistant", "content": welcome_msg})
     with st.chat_message("assistant"):
-        st.markdown(welcome)
-
-def render_sidebar_tools():
-    """Property analysis tools"""
-    with st.sidebar:
-        st.subheader("🔧 Property Toolkit")
-        
-        # Current property summary
-        if any(st.session_state.property_details.values()):
-            st.write("**📋 Current Property**")
-            for key, match in st.session_state.property_details.items():
-                if match: st.write(f"- {key.title()}: {match.group(1)}")
-        
-        st.divider()
-        
-        # Quick analysis buttons
-        if st.button("📊 Market Snapshot"):
-            if loc := st.session_state.property_details.get("location"):
-                with st.chat_message("assistant"):
-                    response = generate_response(
-                        f"Give a 3-point market snapshot for {loc.group(1)}"
-                    )
-                    st.markdown(response)
+        st.markdown(welcome_msg)
 
 # ======================
-# MAIN APP
+# MAIN APP FLOW
 # ======================
 def main():
-    # App configuration
-    st.set_page_config(
-        page_title="🏠 AI Real Estate Analyst",
-        layout="centered",
-        page_icon="🏡"
-    )
+    initialize_app()
     st.title("🏠 AI Real Estate Analyst")
     
-    # Initialize app
-    load_dotenv()  # Only loads .env locally
-    init_session()
-    
-    # Display chat interface
+    # Display chat history
     display_chat()
+    
+    # Show welcome message on first load
     if st.session_state.first_interaction:
         show_welcome()
         st.session_state.first_interaction = False
@@ -137,28 +133,23 @@ def main():
         # Generate and display response
         with st.chat_message("assistant"):
             with st.spinner("Analyzing..."):
-                # Create enhanced prompt
                 prompt = f"""
-                As a top real estate analyst, respond to:
+                As a real estate expert, respond to:
                 "{user_input}"
                 
                 Include:
                 1. 📍 Location context
                 2. 📊 Data references
                 3. 💡 Actionable advice
-                4. ⚠️ Potential risks
                 """
                 
                 reply = generate_response(prompt)
                 st.markdown(reply)
                 st.session_state.chat_history.append({"role": "assistant", "content": reply})
                 
-                # Update property details
-                if any(kw in user_input.lower() for kw in ["worth", "value", "price", "buy"]):
+                # Update property details if relevant
+                if any(kw in user_input.lower() for kw in ["worth", "value", "price"]):
                     st.session_state.property_details = extract_property_details(user_input)
-    
-    # Render sidebar tools
-    render_sidebar_tools()
 
 if __name__ == "__main__":
     main()
