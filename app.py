@@ -4,6 +4,8 @@ import google.generativeai as genai
 # ======================
 # SECRETS CONFIGURATION
 # ======================
+st.write("🔍 Secrets loaded:", st.secrets)
+
 def get_api_key():
     """Secure API key retrieval with detailed error guidance"""
     try:
