@@ -1,38 +1,42 @@
 import streamlit as st
 import google.generativeai as genai
 
+# ---------- Must be the very first Streamlit call ----------
+st.set_page_config(
+    page_title="🏠 AI Real Estate Analyst Pro",
+    layout="centered",
+    page_icon="🏡"
+)
+
 # ======================
 # SECRETS CONFIGURATION
 # ======================
-st.write("🔍 Secrets loaded:", st.secrets)
-
 def get_api_key():
-    """Secure API key retrieval with detailed error guidance"""
     try:
-        # First check if secrets are available
         if not hasattr(st, 'secrets'):
             st.error("Streamlit secrets not available in this environment")
             st.stop()
         
-        # Then check for the specific key
         if 'GEMINI_API_KEY' not in st.secrets:
-            st.error("""
-            🔐 Missing API Key Configuration
-            
-            REQUIRED STEPS:
-            
-            1. Go to your Streamlit app dashboard
-            2. Click on 'Settings' → 'Secrets'
-            3. Add exactly this configuration:
-            
-            ```toml
-            [secrets]
-            GEMINI_API_KEY = "your_actual_key_here"
-            ```
-            
-            4. Click 'Save' 
-            5. Wait 1 minute and refresh this page
-            """)
+            st.error(
+                """
+                🔐 Missing API Key Configuration
+                
+                REQUIRED STEPS:
+                
+                1. Go to your Streamlit app dashboard
+                2. Click on 'Settings' → 'Secrets'
+                3. Add exactly this configuration:
+                
+                ```toml
+                [secrets]
+                GEMINI_API_KEY = "your_actual_key_here"
+                ```
+                
+                4. Click 'Save' 
+                5. Wait 1 minute and refresh this page
+                """
+            )
             st.stop()
             
         return st.secrets["GEMINI_API_KEY"]
@@ -45,7 +49,6 @@ def get_api_key():
 # APP INITIALIZATION
 # ======================
 def initialize_gemini():
-    """Configure Gemini with robust error handling"""
     try:
         api_key = get_api_key()
         genai.configure(api_key=api_key)
@@ -58,27 +61,21 @@ def initialize_gemini():
 # MAIN APP
 # ======================
 def main():
-    st.set_page_config(
-        page_title="🏠 AI Real Estate Analyst Pro",
-        layout="centered",
-        page_icon="🏡"
-    )
+    # (Optionally, if you need debugging, place such debugging outputs here)
+    # st.write("🔍 Secrets loaded:", st.secrets)
     
     # Initialize services
     model = initialize_gemini()
     
-    # Initialize chat
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     
     st.title("🏠 AI Real Estate Analyst Pro")
     
-    # Display chat history
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
     
-    # Initial greeting
     if not st.session_state.chat_history:
         welcome_msg = """
         🏡 **Professional Real Estate Assistant**  
@@ -96,7 +93,6 @@ def main():
         with st.chat_message("assistant"):
             st.markdown(welcome_msg)
     
-    # User input
     if prompt := st.chat_input("Ask about properties..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
