@@ -2,132 +2,113 @@ import streamlit as st
 import google.generativeai as genai
 
 # ======================
-# SECURE API CONFIGURATION
+# SECRETS CONFIGURATION
 # ======================
-def validate_environment():
-    """Ensures proper configuration before startup"""
-    if 'GEMINI_API_KEY' not in st.secrets:
-        st.error("""
-        🔐 Configuration Required
-
-        Steps to fix:
-        1. Go to your Streamlit app dashboard
-        2. Click ⚙️ → Settings → Secrets
-        3. Add exactly:
-        ```toml
-        [secrets]
-        GEMINI_API_KEY = "your_actual_key_here"
-        ```
-        4. Click Save and restart your app
-        """)
-        st.stop()  # Prevent further execution
-    return st.secrets["GEMINI_API_KEY"]
+def get_api_key():
+    """Retrieve API key from Streamlit Secrets with clear error handling"""
+    try:
+        if 'GEMINI_API_KEY' not in st.secrets:
+            st.error("""
+            🔐 Missing API Key Configuration
+            
+            How to fix:
+            
+            1. Go to your Streamlit app dashboard
+            2. Click on '⚙️ Settings' → 'Secrets'
+            3. Add your Gemini API key:
+            ```toml
+            [secrets]
+            GEMINI_API_KEY = "your_actual_key_here"
+            ```
+            4. Click 'Save' and restart your app
+            """)
+            st.stop()
+        return st.secrets["GEMINI_API_KEY"]
+    except Exception as e:
+        st.error(f"Configuration error: {str(e)}")
+        st.stop()
 
 # ======================
 # APP INITIALIZATION
 # ======================
 def initialize_app():
-    """Configures core application services"""
-    # Validate environment first
-    api_key = validate_environment()
-    
+    """Configure the application"""
     # App metadata
     st.set_page_config(
         page_title="🏠 AI Real Estate Analyst",
         layout="centered",
-        page_icon="🏡",
-        menu_items={
-            'Get Help': 'https://docs.streamlit.io',
-            'Report a bug': None,
-            'About': "Powered by Gemini AI"
-        }
+        page_icon="🏡"
     )
     
-    # Initialize AI services
-    genai.configure(api_key=api_key)
+    # Initialize Gemini
+    try:
+        genai.configure(api_key=get_api_key())
+        return genai.GenerativeModel("models/gemini-1.5-pro-latest")
+    except Exception as e:
+        st.error(f"Failed to initialize AI service: {str(e)}")
+        st.stop()
+
+# ======================
+# MAIN APP FUNCTIONALITY
+# ======================
+def main():
+    # Initialize components
+    model = initialize_app()
     
     # Initialize session state
-    session_defaults = {
-        'model': genai.GenerativeModel("models/gemini-1.5-pro-latest"),
-        'chat_history': [],
-        'property_cache': {}
-    }
-    for key, value in session_defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-# ======================
-# CORE FUNCTIONALITY
-# ======================
-def generate_insight(prompt: str) -> str:
-    """Generates AI response with robust error handling"""
-    try:
-        response = st.session_state.model.generate_content(
-            f"""As a real estate expert analyzing:
-            {prompt}
-
-            Provide:
-            1. Location-specific context 🌍
-            2. Current market data 📈
-            3. Professional recommendation 💼
-            4. Potential risks ⚠️
-            
-            Use bullet points for readability.
-            """
-        )
-        return response.text
-    except Exception as e:
-        return f"🔴 Service Error: {str(e)}"
-
-# ======================
-# USER INTERFACE
-# ======================
-def render_chat_interface():
-    """Handles all chat display and interactions"""
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    
     st.title("🏠 AI Real Estate Analyst")
     
     # Display chat history
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
     
     # Initial greeting
     if not st.session_state.chat_history:
-        greeting = """
+        welcome_msg = """
         🏡 **AI Real Estate Assistant**  
-        How I can help:
-        • Instant property valuations
-        • Local market trends
-        • Investment analysis
+        I can help with:
+        - Property valuations
+        - Market trends
+        - Investment analysis
         
-        Try:  
-        _"Value my 3-bedroom in Austin"_  
-        _"Show Denver market trends"_
+        Try asking:  
+        *"What's my 3-bedroom in Austin worth?"*
         """
-        st.session_state.chat_history.append({"role": "assistant", "content": greeting})
+        st.session_state.chat_history.append({"role": "assistant", "content": welcome_msg})
         with st.chat_message("assistant"):
-            st.markdown(greeting)
+            st.markdown(welcome_msg)
     
-    # Process user input
-    if query := st.chat_input("Ask about properties..."):
+    # Handle user input
+    if prompt := st.chat_input("Ask about properties..."):
         # Add user message
-        st.session_state.chat_history.append({"role": "user", "content": query})
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
-            st.markdown(query)
+            st.markdown(prompt)
         
-        # Generate and display response
+        # Generate response
         with st.chat_message("assistant"):
             with st.spinner("Analyzing..."):
-                response = generate_insight(query)
-                st.markdown(response)
-                st.session_state.chat_history.append({"role": "assistant", "content": response})
-
-# ======================
-# MAIN EXECUTION
-# ======================
-def main():
-    initialize_app()
-    render_chat_interface()
+                try:
+                    response = model.generate_content(
+                        f"""As a real estate expert, analyze:
+                        {prompt}
+                        
+                        Provide:
+                        1. Location context 🌎
+                        2. Current market data 📊
+                        3. Professional advice 💼
+                        """
+                    )
+                    reply = response.text
+                except Exception as e:
+                    reply = f"⚠️ Error: {str(e)}"
+                
+                st.markdown(reply)
+                st.session_state.chat_history.append({"role": "assistant", "content": reply})
 
 if __name__ == "__main__":
     main()
