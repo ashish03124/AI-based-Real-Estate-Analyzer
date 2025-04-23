@@ -10,15 +10,16 @@ from dotenv import load_dotenv
 def configure_app():
     """Handle secrets and API configuration"""
     # Unified secret/environment handling
+    # Unified configuration (works both locally and in production)
     api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
     
     if not api_key:
         st.error("""
-        ❌ Gemini API key not found. Please:
-        1. For local use: Add to `.env` as GEMINI_API_KEY=your_key
+        ❌ Gemini API key missing. Please:
+        1. For local use: Create `.env` with GEMINI_API_KEY=your_key
         2. For deployment: Set in Streamlit Secrets
         """)
-        st.stop()
+        st.stop()  # Prevents app from running without key
     
     genai.configure(api_key=api_key)
     return genai.GenerativeModel("models/gemini-1.5-pro-latest")
